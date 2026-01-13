@@ -1,2 +1,2 @@
 # icc-boed
-Bayesian optimal experimental design is performed to improve model calibration by iteratively selecting experiments that will provide the most informative data for model calibration.
+Comprehensive material characterization and simultaneous model calibration for improved computational simulation credibility.
