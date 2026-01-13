@@ -1,0 +1,159 @@
+Running the code:
+
+The main file is "*_boed_input.py". There is an input file for the MPS
+case (mps_boed_input.py) and a separate input file for the
+crucifrom example (crucifrom_boed_input.py).
+
+The order of files called in the script is as follows:
+
+Main
+  boed_alg.py
+    utility_funcitons.py --> EIG_samples
+    utility_functions.py --> EIG
+    posterior_update_tools.py --> Laplace_approx
+      scipy.optimize --> fmin_l_bfgs
+        stats_utils.py --> unnorm_log_post
+        utils.py --> compute_fd_gradient
+
+
+Main
+    -- problem setup
+    -- define experiment that takes the experiment design as input and returns the QoIs as output
+    -- define model that takes parameters and experiment design as input and returns the QoIs as output
+    -- define prior distributions for parameters
+    -- Laplace approximation settings
+    -- EIG calculation settings
+    -- all other settings for running the code
+    -- calls boed_alg.py
+    -- collects posterior distribution, EIG values, data at each step
+    -- all data saved to pickle file
+
+boed_alg.py
+    -- if experiment at current boed step is pre-determined, then collect data and update posterior by
+       calling posterior_update_tools.py --> Laplace_approx
+    -- if experiment at current boed step is not pre-determined then:
+       1) call utility_functions --> EIG_samples to collect parameter samples for inner and outer loop of double-nested MC EIG estimator and
+          calculate corresponding model QoIs and draw samples from data distribtuion
+       2) call utility_functions --> EIG to calculate EIG
+    -- determine experiment with greatest approximated EIG
+    -- collect data for chosen experiment
+    -- update posterior distribution given the prior distribution and all data collected thus far
+    -- continue on to next boed step. The posterior distribution becomes the prior (sampling distribution)
+       for the EIG calculation in the next step
+    -- the posterior is always determined with the original prior and all data in order to minimuze
+       approximation error from Laplace
+    -- after pre-determined number of steps, the algorithm ends and returns the posterior, EIG, and data for each step
+
+utility_functions.py --> EIG_samples
+    -- given a sampling distribution, which is the prior in the first step and the posterior in subsequent steps,
+       draw parameter samples for the inner and outer loop of the MC estimator.
+    -- calculate model QoIs for each sample
+    -- draw samples from data distribution
+    -- return samples to be used in EIG calculation as well as data samples
+
+utility_functions.py --> EIG
+    -- given inner and outer loop model QoIs and draws from the data distribution,
+       calculate EIG for each design
+    -- return EIG for each design
+
+
+posterior_update_tools.py --> Laplace_approx
+- set up objective function to be optimized, which is the  unnormalized log posterior
+- call fmin_l_bfgs to minimize objective function
+- optionally: define fprime for fmin_l_bfgs
+  - could be finite difference or analytical
+- collect parameters that minimize objective function
+- calculate Hessian at par^opt using finite difference
+- return Laplace approximation of the posterior, which is a normal distribtuion
+  characterized by mean par_opt and covariance inv(Hessian(par^opt))
+
+
+***************************
+** Settings in Main file **
+***************************
+M --> number of samples for inner loop of MC EIG estimator
+
+N --> number of samplse for outer loop of MC EIG estimator
+
+ind_inner_samples --> flag for drawing unique inner samples such that
+  theta_(n,m) is an N x M matrix of samples. If False, then all N rows have
+  the same M samples. This may add extra bias in the EIG estimate, but
+  some studies have shown this error is minimal (see Xun Huan references in paper)
+
+ind_inner_outer_samples --> flag for drawing uniqe samples for inner and outer loop.
+  if False, then the same parameter samples are used for the inner and outer loop.
+  Setting to False is one way to try to overcome arithmetic underflow, but it introduces
+  additional bias in the estimate. (see Xun Huan reference from paper).
+** increasing M and smart selection of prior distribtuions are also ways to avoid
+   arithmetic underflow
+
+evidence_method --> method for calculating inner loop (or evidence) in MC EIG estimate
+
+biasing_dist --> biasing distribution to use for parameter samples in EIG estimate.
+  'prior' is the default. Other methods not yet mature.
+
+design_mode --> 'adaptive' or 'static'
+  if 'static', all designs must be pre-determined in 'design_initiation'
+
+design_initiation --> for adaptive design, design initiation is optional for the
+  initial n steps (n can equal 1 -- nsteps). for static designs, design_initiation
+  must contain the design for each step
+
+nlevels --> number of levels in load path tree (or number of boed steps)
+
+choice_list --> experimental deign choices
+
+theta_bounds --> bounds for pameters to be used in Laplace approximation.
+   Bounds are also used in prior distribution if one is chosen that requires it
+   (such as a uniform or truncated normal distribution). If None, then no bounds
+   are enforced for Laplace approximation.
+
+
+num_qois --> number of qois to use from model and experiment. For the
+  cruciform example, the displacements in the x and y direction are used,
+  and the load in the x and y direction are used. So num_qois is [2, 2]
+  (n displacement, n load).
+
+qoi_index --> index of the qois to be used in the model and experiment output
+
+nobs_pstep --> number of observations collected at each step in the algorithm.
+  For displacement, there are 1022 points in the point cloud for both x and y.
+  After integration, this reduces to a single observation. The load has a single
+  value returned at each step for both x and y.
+
+
+experiment --> define a partial function for the experiment that takes the experimental
+  design as input and returns the QoIs as output. In this case, the experiment is
+  the model evaluated at some assumed true parameter values with added i.i.d. error
+
+fmodel --> define the model as a partial function that takes parameters and the
+  experimental design as input and returns the QoIs as output.
+
+return_steps --> argument for the model and experiment. Specify if QoIs from 'all'
+  steps should be returned or if only QoIs from the 'last' step should be returned.
+  (i.e., the Laplace approximation uses 'all' and EIG calculation uses 'last')
+
+integrate_displacement --> argument for the model and experiment. Specify if the
+  displacement field should be integrated
+
+fd_eps --> pertubration value to be used in finite difference. Either
+  a single value or 'auto'.
+
+use_own_fd --> flag to use own script for finite difference (True) or
+  in fmin_l_bfgs or to use the built in scipy function (False)
+
+factr, pgtol, maxls --> arguments for fmin_l_bfgs
+
+nrestarts --> [nmin, nmax], number or restarts to use in Laplace_approximation.
+  nmin > 1 helps to find global minimum in the presence of local modes.
+
+fd_order --> finite difference order
+
+sequential_design --> flag to use a sequential approach where the posterior
+  becomes the sampling (or prior) distribution in the subsequent step for the
+  EIG calculation.
+
+ntrials --> number of times to repeat the algorithm. Multiple trials
+  will have difference instances of noise for the data and different
+  EIG samples.
+
